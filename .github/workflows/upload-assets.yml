@@ -1,0 +1,32 @@
+name: Upload Assets
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  upload-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Upload version_mapping.json
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./version_mapping.json
+          asset_name: version_mapping.json
+          asset_content_type: application/json
+
+      - name: Upload docker-compose.yaml
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./docker-compose.yaml
+          asset_name: docker-compose.yaml
+          asset_content_type: text/yaml
