@@ -9,6 +9,6 @@
     "ui": "1.0.1",
     "backend": "1.0.1",
     "airflow": "2.0.2",
-    "docker_compose":"1.0.1"
+    "docker_compose":"1.0.0"
   }
 }
