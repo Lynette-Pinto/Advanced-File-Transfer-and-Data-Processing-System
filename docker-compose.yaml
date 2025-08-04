@@ -87,6 +87,8 @@ services:
         env_file:
             - .env
         hostname: ${DOCKER_HUB_REPO_BE}-liquibase
+        volumes:
+            - /var/morphus/logs/liquibase:/app/logs
         restart: "no"
         depends_on:
             mysql:
@@ -109,6 +111,8 @@ services:
             - .env                                       
         hostname: ${DOCKER_HUB_REPO_BE}-api-gateway
         restart: always
+        volumes:
+            - /var/morphus/logs/api-gateway:/app/logs
         networks:
             - morphus
         logging:
@@ -137,6 +141,8 @@ services:
             - .env
         hostname: ${DOCKER_HUB_REPO_BE}-auth
         restart: always
+        volumes:
+            - /var/morphus/logs/auth:/app/logs
         logging:
             driver: "json-file"
             options:
@@ -163,6 +169,8 @@ services:
         env_file:
             - .env
         hostname: ${DOCKER_HUB_REPO_BE}-user-access-management
+        volumes:
+            - /var/morphus/logs/user-access-management:/app/logs
         restart: always
         logging:
             driver: "json-file"
@@ -189,6 +197,8 @@ services:
         env_file:
             - .env
         hostname: ${DOCKER_HUB_REPO_BE}-metadata
+        volumes:
+            - /var/morphus/logs/metadata:/app/logs
         restart: always
         logging:
             driver: "json-file"
@@ -214,6 +224,8 @@ services:
         env_file:
             - .env
         hostname: ${DOCKER_HUB_REPO_BE}-email-notification
+        volumes:
+            - /var/morphus/logs/metadata:/app/logs
         restart: always
         logging:
             driver: "json-file"
@@ -477,7 +489,9 @@ services:
             - auth
             - user-access-management
             - metadata
-            - email-notification      
+            - email-notification  
+        volumes:
+            - /var/morphus/logs/ui:/var/log/nginx    
         networks:
             - morphus
 
