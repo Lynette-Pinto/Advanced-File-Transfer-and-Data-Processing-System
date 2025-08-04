@@ -457,7 +457,7 @@ services:
 
 
     web:
-        image: ${DOCKER_HUB_REPO_AIRFLOW}-api:${DOCKER_IMAGE_TAG_AIRFLOW}
+        image: ${DOCKER_HUB_REPO_AIRFLOW}:${DOCKER_IMAGE_TAG_AIRFLOW}
         container_name: morphus-api-endpoint
         networks:
             - morphus
@@ -473,8 +473,8 @@ services:
 
  #---------------------------------------UI----------------------------------------
     morphus-ui-angular:                                     
-        image: "${DOCKER_HUB_REPO_UI}-angular-dev:${DOCKER_IMAGE_TAG_UI}"
-        container_name: ${DOCKER_HUB_REPO_UI}-angular
+        image: "${DOCKER_HUB_REPO_UI}:${DOCKER_IMAGE_TAG_UI}"
+        container_name: ${DOCKER_HUB_REPO_UI}
         ports: 
             - "${UI_PORT}:80"
         restart: always
