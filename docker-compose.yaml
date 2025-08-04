@@ -68,7 +68,7 @@ services:
             MYSQL_PASSWORD: ${MYSQL_DB_PASSWORD}
             MYSQL_DATABASE: ${MYSQL_DB_NAME}
         volumes:
-            - /var/morphus/database/mysql/:/var/lib/mysql
+            - /var/morphus/database/mysql:/var/lib/mysql
         networks:
             - morphus
         restart: unless-stopped
