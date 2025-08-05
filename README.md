@@ -1,7 +1,7 @@
-# Morphus
+# Morphus Data
 
 
-The **Morphus** is a secure, scalable application designed to automate and manage data transfers between various sources and destinations using configurable pipelines. The `MorphusInstaller.sh`  simplifies deployment and management of the Morphus application using Docker and Docker Compose. It offers guided setup and CLI-based lifecycle control.
+ **Morphus Data** is a secure, scalable application designed to automate and manage data transfers between various sources and destinations using configurable pipelines. The `MorphusInstaller.sh`  simplifies deployment and management of Morphus Data application using Docker and Docker Compose. It offers guided setup and CLI-based lifecycle control.
 
 ---
 
@@ -40,27 +40,39 @@ The **Morphus** is a secure, scalable application designed to automate and manag
 ### 1. Clone the repository
 
 ```bash
-
-
-
 git clone https://github.com/<your-org>/<your-repo>.git
-cd <your-repo>
+cd <script_location>
 chmod +x MorphusInstaller.sh
 ```
 
 ### 2. Run the Installer
 
 ```bash
+Mac OS:
+sh MorphusInstaller.sh
+
+Linux OS:
 ./MorphusInstaller.sh
 ```
 
 You will be prompted for:
 
 - Confirmation of Docker availability 
-- Port numbers (UI, Redis, Backend, Airflow)
+- Port numbers (UI, Backend DB)
 - Application version (fetched from GitHub releases)
-- MySQL database setup (new or existing)
+- MySQL database setup (New or Existing)
+    - Existing Database (Hostname, Port, Username, Password,Backend Database Name)
 - Docker Compose validation
+
+### 4. Version
+
+```bash
+morphus version
+```
+
+You can check the current version of Morphus Data that is installed on the system using this command.
+
+---
 
 ### 3. Start the Service
 
@@ -83,10 +95,43 @@ During the first launch, you'll be asked to:
 /var/morphus/
 ├── logs/
 │   ├── ui/
-│   ├── backend/
-│   └── airflow/
-├── docker-compose.yaml
-├── .env
+│   └── backend/
+│       ├── api-gateway/
+│       ├── auth/
+│       ├── user-access-management/
+│       ├── metadata/
+│       └── email-notification/
+├── database/
+│   └── mysql/                   # MySQL data storage
+├── docker-compose.yaml           # Main docker-compose file
+├── .env                          # Environment variables
+├── .ver                          # Version tracking file
+├── .org_created                   # Marker for org creation
+├── .user_created                  # Marker for user creation
+
+```
+
+```
+/var/airflow/
+├── dags/                         # DAGs for workflows
+├── logs/                         # Airflow logs
+├── config/                       # Configuration files
+├── plugins/                       # Custom plugins
+├── test/                          # Test files
+├── scripts/                       # Custom scripts
+├── api/                           # API-related files
+├── dag_json_data/                  # JSON data for DAGs
+
+
+```
+
+```
+/var/morphus_backup/
+├── v1.0/                           # Backup for version v1.0 (Previous version) before moving to v2.0(Next version)
+│   ├── morphus/                    # Backup of /var/morphus
+│   └── airflow/                    # Backup of /var/airflow
+                                    # Additional version backups
+
 ```
 
 ---
@@ -96,12 +141,13 @@ During the first launch, you'll be asked to:
 After installation, a global CLI command `morphus` is registered with the following subcommands:
 
 ```bash
+morphus version     # Dislays the current version
 morphus start       # Launch containers
 morphus stop        # Stop containers
 morphus update      # Upgrade to another version
+morphus rollback    # Rollsback to the previous version
 morphus uninstall   # Remove all containers and files
 ```
-
 ---
 
 ##  Updating to a Newer Version
@@ -113,6 +159,17 @@ morphus update
 - Fetches available versions from GitHub
 - Allows selection and updates `.env`
 - Restarts containers with new version
+
+---
+##  Rollback to a Previous Version
+
+```bash
+morphus rollback
+```
+
+- Rolls back the application to the most recent previously installed version.
+- Rollback is limited to only one version back (cannot revert to older versions beyond the immediate last one).
+- Automatically restarts all containers using the rolled-back version.
 
 ---
 
@@ -147,13 +204,13 @@ Log files are stored in:
 
 - `/var/morphus/logs/ui/`
 - `/var/morphus/logs/backend/`
-- `/var/morphus/logs/airflow/`
+- `/var/airflow/logs`
 
 ---
 
 ##  Notes
 
-- Supports Linux and macOS (some features like service detection differ)
+- Supports Linux and macOS 
 - Docker images must be compatible with version mappings set in `.env`
 - First-time start performs DB insertions for organization and user creation
 
@@ -161,4 +218,4 @@ Log files are stored in:
 
 ##  Contact
 
-For questions or access to the repository, contact: `<add maintainer contact>`
+For questions or access to the repository, contact: `< maintainer contact>`
