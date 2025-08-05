@@ -40,7 +40,7 @@ services:
     #---------------------------------------SQL----------------------------------------
     postgres:
         image: postgres:13
-        container_name: ${DOCKER_CONTAINER_NAME}-airflow-postgres
+        container_name: ${DOCKER_CONTAINER_NAME_AF}-postgres
         hostname: morphus-airflow-postgres
         environment:
             POSTGRES_USER: ${AIRFLOW_DB_USER}
@@ -82,7 +82,7 @@ services:
 
     #---------------------------------------Liquibase----------------------------------------
     liquibase:
-        container_name: ${DOCKER_CONTAINER_NAME}-liquibase
+        container_name: ${DOCKER_CONTAINER_NAME_BE}-liquibase
         image: ${DOCKER_HUB_REPO_BE}-liquibase:${DOCKER_IMAGE_TAG_BE}
         env_file:
             - .env
@@ -105,7 +105,7 @@ services:
     #-------------------------------------Backend-------------------------------------
 
     api-gateway:
-        container_name: ${DOCKER_CONTAINER_NAME}-api-gateway
+        container_name: ${DOCKER_CONTAINER_NAME_BE}-api-gateway
         image: ${DOCKER_HUB_REPO_BE}-api-gateway:${DOCKER_IMAGE_TAG_BE}
         env_file:
             - .env                                       
@@ -128,7 +128,7 @@ services:
 
 
     auth:
-        container_name: ${DOCKER_CONTAINER_NAME}-auth
+        container_name: ${DOCKER_CONTAINER_NAME_BE}-auth
         image: ${DOCKER_HUB_REPO_BE}-auth:${DOCKER_IMAGE_TAG_BE}
         environment:
             - SPRING_PROFILES_ACTIVE=default
@@ -157,7 +157,7 @@ services:
 
 
     user-access-management:
-        container_name: ${DOCKER_CONTAINER_NAME}-user-access-management
+        container_name: ${DOCKER_CONTAINER_NAME_BE}-user-access-management
         image: ${DOCKER_HUB_REPO_BE}-user-access-management:${DOCKER_IMAGE_TAG_BE}
         environment:
             - SPRING_PROFILES_ACTIVE=default
@@ -185,7 +185,7 @@ services:
 
 
     metadata:
-        container_name: ${DOCKER_CONTAINER_NAME}-metadata
+        container_name: ${DOCKER_CONTAINER_NAME_BE}-metadata
         image: ${DOCKER_HUB_REPO_BE}-metadata:${DOCKER_IMAGE_TAG_BE}
         environment:
             - SPRING_PROFILES_ACTIVE=default
@@ -212,7 +212,7 @@ services:
                 condition: service_completed_successfully
 
     email-notification:
-        container_name: ${DOCKER_CONTAINER_NAME}-email-notification
+        container_name: ${DOCKER_CONTAINER_NAME_BE}-email-notification
         image: ${DOCKER_HUB_REPO_BE}-email-notification:${DOCKER_IMAGE_TAG_BE}
         environment:
             - SPRING_PROFILES_ACTIVE=default
@@ -264,7 +264,7 @@ services:
             AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: 0
             AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: 5
             AIRFLOW__SCHEDULER__PARSE_MODE: lazy
-        container_name: ${DOCKER_CONTAINER_NAME}-airflow-webserver
+        container_name: ${DOCKER_CONTAINER_NAME_AF}-webserver
         hostname: airflow-webserver
         healthcheck:
             test: ["CMD", "curl", "--fail", "http://localhost:8080/"]
@@ -288,7 +288,7 @@ services:
     airflow-scheduler:
         <<: *airflow-common
         command: scheduler
-        container_name: ${DOCKER_CONTAINER_NAME}-airflow-scheduler
+        container_name: ${DOCKER_CONTAINER_NAME_AF}-scheduler
         environment:
             <<: *airflow-common-env
             AIRFLOW__SCHEDULER__PARSING_PROCESSES: 4
@@ -312,7 +312,7 @@ services:
     airflow-worker:
         <<: *airflow-common
         command: celery worker
-        container_name: ${DOCKER_CONTAINER_NAME}-airflow-worker
+        container_name: ${DOCKER_CONTAINER_NAME_AF}-worker
         healthcheck:
             test:
             - "CMD-SHELL"
@@ -335,7 +335,7 @@ services:
     airflow-triggerer:
         <<: *airflow-common
         command: triggerer
-        container_name: ${DOCKER_CONTAINER_NAME}-airflow-triggerer
+        container_name: ${DOCKER_CONTAINER_NAME_AF}-triggerer
         healthcheck:
             test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
             interval: 30s
@@ -353,7 +353,7 @@ services:
     airflow-init:
         <<: *airflow-common
         entrypoint: /bin/bash
-        container_name: ${DOCKER_CONTAINER_NAME}-airflow-init
+        container_name: ${DOCKER_CONTAINER_NAME_AF}-init
         command:
             - -c
             - |
@@ -436,7 +436,7 @@ services:
     flower:
         <<: *airflow-common
         command: celery flower
-        container_name: ${DOCKER_CONTAINER_NAME}-airflow-flower
+        container_name: ${DOCKER_CONTAINER_NAME_AF}-flower
         profiles:
             - flower
         # ports:
@@ -474,7 +474,7 @@ services:
  #---------------------------------------UI----------------------------------------
     morphus-ui-angular:                                     
         image: "${DOCKER_HUB_REPO_UI}:${DOCKER_IMAGE_TAG_UI}"
-        container_name: ${DOCKER_CONTAINER_NAME}-ui
+        container_name: ${DOCKER_CONTAINER_NAME_UI}
         ports: 
             - "${UI_PORT}:80"
         restart: always
