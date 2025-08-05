@@ -86,7 +86,7 @@ services:
         image: ${DOCKER_HUB_REPO_BE}-liquibase:${DOCKER_IMAGE_TAG_BE}
         env_file:
             - .env
-        hostname: ${DOCKER_HUB_REPO_BE}-liquibase
+        hostname: ${DOCKER_CONTAINER_NAME_BE}-liquibase
         volumes:
             - /var/morphus/logs/liquibase:/app/logs
         restart: "no"
@@ -109,7 +109,7 @@ services:
         image: ${DOCKER_HUB_REPO_BE}-api-gateway:${DOCKER_IMAGE_TAG_BE}
         env_file:
             - .env                                       
-        hostname: ${DOCKER_HUB_REPO_BE}-api-gateway
+        hostname: ${DOCKER_CONTAINER_NAME_BE}-api-gateway
         restart: always
         volumes:
             - /var/morphus/logs/api-gateway:/app/logs
@@ -139,7 +139,7 @@ services:
             - DB_PORT=3306
         env_file:
             - .env
-        hostname: ${DOCKER_HUB_REPO_BE}-auth
+        hostname: ${DOCKER_CONTAINER_NAME_BE}-auth
         restart: always
         volumes:
             - /var/morphus/logs/auth:/app/logs
@@ -168,7 +168,7 @@ services:
             - DB_PORT=3306
         env_file:
             - .env
-        hostname: ${DOCKER_HUB_REPO_BE}-user-access-management
+        hostname: ${DOCKER_CONTAINER_NAME_BE}-user-access-management
         volumes:
             - /var/morphus/logs/user-access-management:/app/logs
         restart: always
@@ -196,7 +196,7 @@ services:
             - DB_PORT=3306
         env_file:
             - .env
-        hostname: ${DOCKER_HUB_REPO_BE}-metadata
+        hostname: ${DOCKER_CONTAINER_NAME_BE}-metadata
         volumes:
             - /var/morphus/logs/metadata:/app/logs
         restart: always
@@ -223,7 +223,7 @@ services:
             - DB_PORT=3306
         env_file:
             - .env
-        hostname: ${DOCKER_HUB_REPO_BE}-email-notification
+        hostname: ${DOCKER_CONTAINER_NAME_BE}-email-notification
         volumes:
             - /var/morphus/logs/metadata:/app/logs
         restart: always
