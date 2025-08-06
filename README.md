@@ -59,7 +59,6 @@ You will be prompted for:
 
 - Confirmation of Docker availability 
 - Port numbers (UI, Backend DB)
-- Application version (fetched from GitHub releases)
 - MySQL database setup (New or Existing)
     - Existing Database (Hostname, Port, Username, Password,Backend Database Name)
 - Docker Compose validation
@@ -156,8 +155,8 @@ morphus uninstall   # Remove all containers and files
 morphus update
 ```
 
-- Fetches available versions from GitHub
-- Allows selection and updates `.env`
+- Fetches laatest version from GitHub
+- Updates `.env`
 - Restarts containers with new version
 
 ---
@@ -170,6 +169,7 @@ morphus rollback
 - Rolls back the application to the most recent previously installed version.
 - Rollback is limited to only one version back (cannot revert to older versions beyond the immediate last one).
 - Automatically restarts all containers using the rolled-back version.
+** Note: Any changes made before rollback will be lost after rollback
 
 ---
 
