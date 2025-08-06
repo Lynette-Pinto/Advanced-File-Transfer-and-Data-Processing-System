@@ -1,7 +1,7 @@
-# Morphus Data
+# DataMorph
 
 
- **Morphus Data** is a secure, scalable application designed to automate and manage data transfers between various sources and destinations using configurable pipelines. The `MorphusInstaller.sh`  simplifies deployment and management of Morphus Data application using Docker and Docker Compose. It offers guided setup and CLI-based lifecycle control.
+ **DataMorph* is a secure, scalable application designed to automate and manage data transfers between various sources and destinations using configurable pipelines. The `MorphusInstaller.sh`  simplifies deployment and management of Morphus Data application using Docker and Docker Compose. It offers guided setup and CLI-based lifecycle control.
 
 ---
 
