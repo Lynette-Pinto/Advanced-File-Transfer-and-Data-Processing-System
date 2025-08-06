@@ -128,13 +128,43 @@ check_port() {
 }
 
 # Fetch available versions from GitHub
-fetch_versions() {
-    local latest_release=$(curl -s "https://api.github.com/repos/$REPO/releases/latest")
-    local asset_url=$(echo "$latest_release" | jq -r '.assets[] | select(.name=="version-mapping.json") | .browser_download_url')
-    VERSION_MAPPING_URL=${asset_url:-"https://raw.githubusercontent.com/$REPO/main/version-mapping.json"}
-    available_versions=$(curl -sL "$VERSION_MAPPING_URL" | jq -r 'keys[]')
-    available_versions=($available_versions)
+fetch_latest_release_info() {
+    echo "Fetching latest stable release info..."
+
+    # Fetch full releases list and filter stable ones
+    local release=$(curl -s "https://api.github.com/repos/$REPO/releases" \
+        | jq -r 'map(select(.prerelease == false)) | sort_by(.tag_name) | last')
+
+    # Validate release
+    if [[ -z "$release" || "$release" == "null" ]]; then
+        echo " Failed to fetch latest stable release info from GitHub."
+        cleanup_on_failure
+        exit 1
+    fi
+
+    # Extract asset URL
+    local url=$(echo "$release" | jq -r '.assets[] | select(.name=="version-mapping.json") | .browser_download_url')
+    if [[ -z "$url" ]]; then
+        echo "version-mapping.json not found in latest release."
+        cleanup_on_failure
+        exit 1
+    fi
+
+    # Extract version and component tags
+    VERSION_CHOICE=$(echo "$release" | jq -r '.tag_name')
+    DOCKER_IMAGE_TAG_UI=$(curl -sSL "$url" | jq -r '.ui')
+    DOCKER_IMAGE_TAG_BE=$(curl -sSL "$url" | jq -r '.backend')
+    DOCKER_IMAGE_TAG_AIRFLOW=$(curl -sSL "$url" | jq -r '.airflow')
+
+    # Update .env file
+    {
+        echo "VERSION=$VERSION_CHOICE"
+        echo "DOCKER_IMAGE_TAG_UI=$DOCKER_IMAGE_TAG_UI"
+        echo "DOCKER_IMAGE_TAG_BE=$DOCKER_IMAGE_TAG_BE"
+        echo "DOCKER_IMAGE_TAG_AIRFLOW=$DOCKER_IMAGE_TAG_AIRFLOW"
+    } | sudo tee -a "$ENV_FILE" > /dev/null
 }
+
 
 prompt_db_details() {
     read -rp "Database Hostname: " MYSQL_DB_HOSTNAME
@@ -223,49 +253,46 @@ sudo sh -c "> \"$ENV_FILE\""
 
 
 #Collect Version Info
-fetch_versions
+#fetch_versions
+fetch_latest_release_info
 VERSION_FILE="$APP_DIR/.ver"
 
-echo "Available versions:"
-for i in "${!available_versions[@]}"; do
-    echo "$((i+1)). ${available_versions[$i]}"
-done
+# echo "Available versions:"
+# for i in "${!available_versions[@]}"; do
+#     echo "$((i+1)). ${available_versions[$i]}"
+# done
 
-while true; do
-    read -rp "Enter the number for the Application version to apply: " version_number
-    if [[ "$version_number" =~ ^[1-9][0-9]*$ ]] && (( version_number >= 1 && version_number <= ${#available_versions[@]} )); then
-        version_choice="${available_versions[$((version_number-1))]}"
-        echo "VERSION=$version_choice" | sudo tee -a "$ENV_FILE" > /dev/null
-        echo "Selected version: $version_choice"
+#while true; do
+    #read -rp "Enter the number for the Application version to apply: " version_number
+    #if [[ "$version_number" =~ ^[1-9][0-9]*$ ]] && (( version_number >= 1 && version_number <= ${#available_versions[@]} )); then
+        #version_choice="${available_versions[$((version_number-1))]}"
+        #echo "VERSION=$version_choice" | sudo tee -a "$ENV_FILE" > /dev/null
+        #echo "Selected version: $version_choice"
 
-        if [ ! -f "$VERSION_FILE" ]; then
-            sudo tee "$VERSION_FILE" >/dev/null <<EOF
-CURRENT_VERSION=$version_choice
+if [ ! -f "$VERSION_FILE" ]; then
+    sudo tee "$VERSION_FILE" >/dev/null <<EOF
+CURRENT_VERSION=$VERSION_CHOICE
 PREVIOUS_VERSION=
 EOF
-        elif ! grep -q "CURRENT_VERSION=" "$VERSION_FILE"; then
-            echo "CURRENT_VERSION=$version_choice" | sudo tee -a "$VERSION_FILE" > /dev/null
-        fi
+elif ! grep -q "CURRENT_VERSION=" "$VERSION_FILE"; then
+    echo "CURRENT_VERSION=$VERSION_CHOICE" | sudo tee -a "$VERSION_FILE" > /dev/null
+fi
 
-        # Extract component versions
-        docker_image_tag_ui=$(curl -sL "$VERSION_MAPPING_URL" | jq -r --arg v "$version_choice" '.[$v].ui')
-        docker_image_tag_be=$(curl -sL "$VERSION_MAPPING_URL" | jq -r --arg v "$version_choice" '.[$v].backend')
-        docker_image_tag_airflow=$(curl -sL "$VERSION_MAPPING_URL" | jq -r --arg v "$version_choice" '.[$v].airflow')
+        # # Extract component versions
+        # docker_image_tag_ui=$(curl -sL "$VERSION_MAPPING_URL" | jq -r --arg v "$version_choice" '.[$v].ui')
+        # docker_image_tag_be=$(curl -sL "$VERSION_MAPPING_URL" | jq -r --arg v "$version_choice" '.[$v].backend')
+        # docker_image_tag_airflow=$(curl -sL "$VERSION_MAPPING_URL" | jq -r --arg v "$version_choice" '.[$v].airflow')
 
-        DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/$REPO/main/docker-compose.yaml"
-        TARGET_FILE="$APP_DIR/docker-compose.yaml"
+DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/$REPO/main/docker-compose.yaml"
+TARGET_FILE="$APP_DIR/docker-compose.yaml"
 
-        echo "Downloading the latest docker-compose.yaml..."
-        if ! curl -fsSL "$DOCKER_COMPOSE_URL" -o "$TARGET_FILE"; then
-            echo "Failed to download docker-compose.yaml. Please check the URL or network connection."
-            cleanup_on_failure
-            exit 1
-        fi
-        break
-    else
-        echo "Invalid selection, Please enter a valid number from the list"
-    fi
-done
+echo "Downloading the latest docker-compose.yaml..."
+if ! curl -fsSL "$DOCKER_COMPOSE_URL" -o "$TARGET_FILE"; then
+    echo "Failed to download docker-compose.yaml. Please check the URL or network connection."
+    cleanup_on_failure
+    exit 1
+fi
+
 
 # Collect database configuration for Airflow Setup
 
@@ -343,12 +370,6 @@ VERSION_FILE="$APP_DIR/.ver"
 TARGET_FILE="$APP_DIR/docker-compose.yaml"
 AIRFLOW_DIR="/var/airflow"
 
-# Determine version mapping URL
-VERSION_MAPPING_URL=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" \
-    | jq -r '.assets[]? | select(.name=="version-mapping.json") | .browser_download_url')
-VERSION_MAPPING_URL="${VERSION_MAPPING_URL:-https://raw.githubusercontent.com/$REPO/main/version-mapping.json}"
-
-# Ensure environment file exists
 [[ -f "$ENV_FILE" ]] || { echo "ERROR: Environment file $ENV_FILE not found"; exit 1; }
 set -a; source "$ENV_FILE"; set +a
 
@@ -358,6 +379,19 @@ case "$(uname -s)" in
     Darwin*) OSTYPE="darwin" ;;
     *) echo "Unsupported OS. Supported: Linux, macOS." && exit 1 ;;
 esac
+
+#Sed command for OS Compatibility 
+sed_replace() {
+  local pattern=$1
+  local file=$2
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' "$pattern" "$file"
+  else
+    sed -i "$pattern" "$file"
+  fi
+}
+
+
 
 
 case "$1" in
@@ -389,7 +423,10 @@ else
     echo "Failed to start Docker containers."
     exit 1
 fi
-echo "First time start detected. Creating organization in the database..."
+
+if [ ! -f "$ORG_MARKER" ]; then
+ echo -e "\nFirst time start detected. Creating organization in the database..."
+
 # Wait for MySQL to be ready
 for i in {1..30}; do
 if docker exec morphus-mysql mysqladmin ping -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" --silent 2>/dev/null; then
@@ -402,9 +439,6 @@ echo "MySQL did not become ready in time."
 exit 1
 fi
 done
-
-if [ ! -f "$ORG_MARKER" ]; then
- echo -e "\nFirst time start detected. Creating organization in the database..."
 
 
 while true; do
@@ -436,23 +470,6 @@ org_name=$(cat "$ORG_MARKER")
 fi
 
 
-
-
-
-docker compose -f "$APP_DIR/docker-compose.yaml" restart \
-    morphus-mysql \
-    morphus-back-end-api-gateway \
-    morphus-back-end-auth \
-    morphus-back-end-user-access-management \
-    morphus-back-end-metadata \
-    morphus-back-end-email-notification
-
-
-
-
-
-
-
 if [[ ! -f "$USER_MARKER" ]]; then
 echo -e "\nTo access the UI, we need to create a new user account."
 echo "You can change the password later if needed."
@@ -469,12 +486,8 @@ echo "Warning: Email domain ($email_domain) does not match organization name ($o
 echo "Please try again."
 fi
 done
-fi
-
 echo "Registering user in the database..."
 register_user_query="INSERT INTO morphus.users (id, first_name, last_name, username, email, organization_id, password, active, deleted, is_new_user, is_owner) VALUES ('demo-id-1', '$first_name', '$last_name', '$email_address', '$email_address', '$org_name', '\$2a\$12\$GTDgS7SlX1j6v8cC6q/o7uUAZqhrNb1i5wKKXDFCkTEwJTTZscoTu', b'1', b'0', b'1', b'1');"
-
-
 if docker exec morphus-mysql mysql -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -e "$register_user_query"; then
     echo "User '$email_address' registered successfully with default password 'Welcome@123'."
     echo "You can change the password later if needed."
@@ -483,6 +496,9 @@ if docker exec morphus-mysql mysql -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -e 
 else
     echo "Failed to register user '$email_address'. Please check your database connection and permissions."
     exit 1
+fi
+else
+echo "User already created. Skipping user creation."
 fi
 echo "Docker containers started successfully."
 ;;
@@ -513,111 +529,92 @@ if [ ! -f "$ORG_MARKER" ] || [ ! -f "$USER_MARKER" ]; then
     exit 1
 fi
 
-
-# Get current version
+# --- Get current installed version ---
 CURRENT_VERSION=$(sudo awk -F'=' '/CURRENT_VERSION/{print $2}' "$VERSION_FILE" 2>/dev/null)
 [[ -z "$CURRENT_VERSION" ]] && echo "No version file found (.ver). Assuming fresh install."
 
-all_versions=($(curl -sL "$VERSION_MAPPING_URL" | jq -r 'keys[]' | sort -V))
+# --- Fetch latest release info ---
+echo "Fetching latest release info..."
 
-# Check if we got versions
-if [ ${#all_versions[@]} -eq 0 ]; then
-    echo "No versions found in mapping file."
-    exit 1
-fi
+release=$(curl -s "https://api.github.com/repos/$REPO/releases" \
+  | jq -r 'map(select(.prerelease == false)) | sort_by(.tag_name) | last')
 
-# Safely get the last element
-last_index=$((${#all_versions[@]} - 1))
-latest_version="${all_versions[$last_index]}"
-echo "Latest version: $latest_version"
+asset_url=$(echo "$release" \
+  | jq -r '.assets[] | select(.name=="version-mapping.json") | .browser_download_url')
 
-# Check if already up-to-date
-if [[ "$CURRENT_VERSION" == "$latest_version" ]]; then
-    echo "Morphus is already up-to-date (Current: $CURRENT_VERSION, Latest: $latest_version)."
+LATEST_VERSION=$(echo "$release" | jq -r '.tag_name')
+DOCKER_IMAGE_TAG_UI=$(curl -sSL "$asset_url" | jq -r '.ui')
+DOCKER_IMAGE_TAG_BE=$(curl -sSL "$asset_url" | jq -r '.backend')
+DOCKER_IMAGE_TAG_AIRFLOW=$(curl -sSL "$asset_url" | jq -r '.airflow')
+
+# --- Check if already up-to-date ---
+if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
+    echo "Morphus is already up-to-date."
     exit 0
 fi
-available_versions=() 
-for ver in "${all_versions[@]}"; do
-    if [[ -z "$CURRENT_VERSION" ]] || [[ "$(printf "%s\n%s" "$CURRENT_VERSION" "$ver" | sort -V | head -n1)" != "$ver" ]]; then
-        available_versions+=("$ver")
-    fi
-done
-if [[ ${#available_versions[@]} -eq 0 ]]; then
-    echo "No newer versions available. Current version: $CURRENT_VERSION"
-    exit 0
-fi
-# Show available future versions and get user selection
-echo "Available newer versions:"
-for i in "${!available_versions[@]}"; do
-    echo "$((i+1)). ${available_versions[$i]}"
-done
 
-while true; do
-    echo "Enter the number corresponding to the Application version you would like to apply:" 
-    read -r version_number
-    if [[ "$version_number" =~ ^[1-9][0-9]*$ ]] && (( version_number >= 1 && version_number <= ${#available_versions[@]} )); then
-        version_choice="${available_versions[$((version_number-1))]}"
-        break
-    else
-        echo "Invalid selection, please enter a valid number."
-    fi 
-done
 
-#  Stop containers only if update confirmed
-echo "Stopping Docker Containers..."
+echo "Updating to $LATEST_VERSION..."
+BACKUP_DIR="$BACKUP_BASE/$CURRENT_VERSION"
+sudo mkdir -p "$BACKUP_DIR"
+
+# Backup MySQL DB
+sudo sh -c "docker exec morphus-mysql mysqldump -u root -ppassword morphus > '$BACKUP_DIR/morphus_db.sql'" 2>/dev/null
+
+# --- Stop containers ---
+echo "Stopping Docker containers..."
 cd "$APP_DIR" || exit 1
 docker compose down >/dev/null 2>&1 \
     && echo "Docker containers stopped successfully." \
     || { echo "Failed to stop Docker containers."; exit 1; }
 
-
-# Backup previous version
+# --- Backup current version ---
 BACKUP_DIR="$BACKUP_BASE/$CURRENT_VERSION"
 sudo mkdir -p "$BACKUP_BASE"
 sudo rm -rf "$BACKUP_DIR"
 sudo mkdir -p "$BACKUP_DIR"
 
-sudo cp -r /var/morphus "$BACKUP_DIR/morphus"
-sudo cp -r /var/airflow "$BACKUP_DIR/airflow"
+TAR_EXTRA_OPTS=""
+if [[ "$(uname)" == "Darwin" ]]; then
+    TAR_EXTRA_OPTS="--no-xattrs --no-mac-metadata"
+else
+    TAR_EXTRA_OPTS="--no-xattrs"
+fi
+
+sudo tar -czpf "$BACKUP_BASE/$CURRENT_VERSION/morphus.tar.gz" \
+    $TAR_EXTRA_OPTS -C /var morphus
+
+sudo tar -czpf "$BACKUP_BASE/$CURRENT_VERSION/airflow.tar.gz" \
+    $TAR_EXTRA_OPTS -C /var airflow
 
 
-
-
-#  Update ENV and version file before backup
-grep -q '^VERSION=' "$ENV_FILE" && \
-    sudo sed -i "s/^VERSION=.*/VERSION=$version_choice/" "$ENV_FILE" || \
-    echo "VERSION=$version_choice" | sudo tee -a "$ENV_FILE" > /dev/null
-
-sudo tee "$VERSION_FILE" > /dev/null <<EOL
-PREVIOUS_VERSION=$CURRENT_VERSION
-CURRENT_VERSION=$version_choice
-EOL
-
-
-
-docker_image_tag_ui=$(curl -sL "$VERSION_MAPPING_URL" | jq -r --arg v "$version_choice" '.[$v].ui')
-docker_image_tag_be=$(curl -sL "$VERSION_MAPPING_URL" | jq -r --arg v "$version_choice" '.[$v].backend')
-docker_image_tag_airflow=$(curl -sL "$VERSION_MAPPING_URL" | jq -r --arg v "$version_choice" '.[$v].airflow')
-
-grep -q '^DOCKER_IMAGE_TAG_UI=' "$ENV_FILE" && sudo sed -i "s/^DOCKER_IMAGE_TAG_UI=.*/DOCKER_IMAGE_TAG_UI=$docker_image_tag_ui/" "$ENV_FILE" || echo "DOCKER_IMAGE_TAG_UI=$docker_image_tag_ui" | sudo tee -a "$ENV_FILE" > /dev/null
-grep -q '^DOCKER_IMAGE_TAG_BE=' "$ENV_FILE" && sudo  sed -i "s/^DOCKER_IMAGE_TAG_BE=.*/DOCKER_IMAGE_TAG_BE=$docker_image_tag_be/" "$ENV_FILE" || echo "DOCKER_IMAGE_TAG_BE=$docker_image_tag_be" | sudo tee -a "$ENV_FILE" > /dev/null
-grep -q '^DOCKER_IMAGE_TAG_AIRFLOW=' "$ENV_FILE" && sudo  sed -i "s/^DOCKER_IMAGE_TAG_AIRFLOW=.*/DOCKER_IMAGE_TAG_AIRFLOW=$docker_image_tag_airflow/" "$ENV_FILE" || echo "DOCKER_IMAGE_TAG_AIRFLOW=$docker_image_tag_airflow" | sudo tee -a "$ENV_FILE" > /dev/null
+# --- Update .env file ---
+sed_replace "s/^VERSION=.*/VERSION=$LATEST_VERSION/" "$ENV_FILE" || echo "VERSION=$LATEST_VERSION" | sudo tee -a "$ENV_FILE" > /dev/null
+sed_replace "s/^DOCKER_IMAGE_TAG_UI=.*/DOCKER_IMAGE_TAG_UI=$DOCKER_IMAGE_TAG_UI/" "$ENV_FILE" || echo "DOCKER_IMAGE_TAG_UI=$DOCKER_IMAGE_TAG_UI" | sudo tee -a "$ENV_FILE" > /dev/null
+sed_replace "s/^DOCKER_IMAGE_TAG_BE=.*/DOCKER_IMAGE_TAG_BE=$DOCKER_IMAGE_TAG_BE/" "$ENV_FILE" || echo "DOCKER_IMAGE_TAG_BE=$DOCKER_IMAGE_TAG_BE" | sudo tee -a "$ENV_FILE" > /dev/null
+sed_replace "s/^DOCKER_IMAGE_TAG_AIRFLOW=.*/DOCKER_IMAGE_TAG_AIRFLOW=$DOCKER_IMAGE_TAG_AIRFLOW/" "$ENV_FILE" || echo "DOCKER_IMAGE_TAG_AIRFLOW=$DOCKER_IMAGE_TAG_AIRFLOW" | sudo tee -a "$ENV_FILE" > /dev/null
 
 set -a; source "$ENV_FILE"; set +a
 
+# --- Update version tracking file ---
+sudo tee "$VERSION_FILE" > /dev/null <<EOL
+PREVIOUS_VERSION=$CURRENT_VERSION
+CURRENT_VERSION=$LATEST_VERSION
+EOL
+
+# --- Download updated docker-compose ---
 DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/$REPO/main/docker-compose.yaml"
 echo "Downloading the latest docker-compose.yaml..."
 if ! curl -fsSL "$DOCKER_COMPOSE_URL" -o "$TARGET_FILE"; then
-    echo "Failed to download docker-compose.yaml. Please check the URL or network connection."
+    echo "Failed to download docker-compose.yaml."
     exit 1
 fi
 
-
-# Validate docker-compose config
+# --- Validate docker-compose config ---
 if ! output=$(docker compose -f "$APP_DIR/docker-compose.yaml" config 2>&1); then
     errors=$(echo "$output" | grep -v '^\[WARN\]' || true)
     if [[ -n "$errors" ]]; then
-        echo "Docker Compose configuration has errors:"
+        echo "Docker Compose configuration errors:"
         echo "$errors"
         exit 1
     fi
@@ -625,17 +622,15 @@ else
     echo "Docker Compose config is valid."
 fi
 
-
+# --- Restart containers ---
 echo "Starting Docker containers..."
 cd "$APP_DIR" || exit 1
-
 if docker compose -f "$APP_DIR/docker-compose.yaml" up -d >/dev/null 2>&1; then
-    echo "Update completed. Docker containers started successfully."
+    echo "Update completed successfully. Running version: $LATEST_VERSION."
 else
     echo "Failed to start Docker containers."
     exit 1
 fi
-
 ;;
 
 
@@ -677,29 +672,33 @@ echo "Rolling back to $PREVIOUS_VERSION"
 
 # Stop containers
 cd "$APP_DIR" || exit 1
- docker compose down >/dev/null 2>&1 || { echo "Failed to stop containers."; exit 1; }
+docker compose down >/dev/null 2>&1 || { echo "Failed to stop containers."; exit 1; }
 
-# Restore Morphus directory
-sudo rsync -a --exclude='backup/' "$BACKUP_PATH/morphus/" /var/morphus/ > /dev/null
+# Remove current directories
+sudo rm -rf /var/morphus /var/airflow
 
+# Restore Morphus and Airflow (no leading '/' warnings)
+sudo tar -xzpf "$BACKUP_BASE/$PREVIOUS_VERSION/morphus.tar.gz" -C /var
+sudo tar -xzpf "$BACKUP_BASE/$PREVIOUS_VERSION/airflow.tar.gz" -C /var
 
-# Restore Airflow directory
-sudo rm -rf /var/airflow
-sudo cp -r "$BACKUP_PATH/airflow" /var/airflow
 sudo chmod -R 777 /var/morphus /var/airflow
 
+# Restore permissions
+sudo chmod -R 777 /var/morphus /var/airflow
 
 set -a; source "$ENV_FILE"; set +a
 
 
+BACKUP_DIR="$BACKUP_BASE/$CURRENT_VERSION"
 # Restart containers
 echo "Restarting containers..."
 cd "$APP_DIR" || exit 1
 if docker compose -f "$APP_DIR/docker-compose.yaml" up -d >/dev/null 2>&1; then
-    echo "Rollback to version $PREVIOUS_VERSION completed successfully."
+sudo docker exec morphus-mysql mysqldump -u root -ppassword morphus | sudo tee "$BACKUP_DIR/morphus_db.sql" > >/dev/null 2>&1
+echo "Rollback to version $PREVIOUS_VERSION completed successfully."
 else
-    echo "Rollback failed to start containers."
-    exit 1
+echo "Rollback failed to start containers."
+exit 1
 fi
 ;;
 
