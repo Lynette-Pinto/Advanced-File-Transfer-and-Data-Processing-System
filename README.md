@@ -60,8 +60,10 @@ You will be prompted for:
 - Confirmation of Docker availability 
 - Port numbers (UI, Backend DB)
 - MySQL database setup (New or Existing)
-    - Existing Database (Hostname, Port, Username, Password,Backend Database Name)
+    - Existing Database (Hostname, Port, Username, Password)
 - Docker Compose validation
+  
+Note: If you choose to use an existing database, the application will attempt to connect using the provided details. It will automatically create a database named morphus if it does not already exist.
 
 ### 4. Version
 
