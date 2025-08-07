@@ -68,8 +68,7 @@ services:
             MYSQL_PASSWORD: ${MYSQL_DB_PASSWORD}
             MYSQL_DATABASE: ${MYSQL_DB_NAME}
         volumes:
-            - morphus-mysql:/var/lib/mysql
-            - /var/morphus/certs:/app/certs:ro 
+            - /var/morphus/database/mysql:/var/lib/mysql
         networks:
             - morphus
         restart: unless-stopped
@@ -80,8 +79,10 @@ services:
             timeout: 5s
             retries: 5
 
+
+
     #---------------------------------------Liquibase----------------------------------------
-    # liquibase:
+ # liquibase:
     #     container_name: ${DOCKER_CONTAINER_NAME_BE}-liquibase
     #     image: ${DOCKER_HUB_REPO_BE}-liquibase:${DOCKER_IMAGE_TAG_BE}
     #     env_file:
@@ -123,6 +124,8 @@ services:
             mysql:
                 condition: service_healthy
         profiles: ["with-mysql"]
+        
+
     #-------------------------------------Backend-------------------------------------
 
     api-gateway:
@@ -524,3 +527,4 @@ networks:
 
 volumes: {}
             
+
