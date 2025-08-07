@@ -12,8 +12,14 @@ CLI_TARGET="/usr/local/bin/$CLI_SCRIPT"
 APP_DIR="/var/$CLI_SCRIPT"
 AIRFLOW_DIR="/var/airflow"
 SCRIPT_NAME="Morphus.sh"
-REPO="Lynette-Pinto/Advanced-File-Transfer-and-Data-Processing-System"
+REPO="Lynette-Pinto/Advanced-File-Transfer-and-Data-Processing-System" 
 ENV_FILE="$APP_DIR/.env"
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+CHECK_MARK="\xE2\x9C\x94"
+GREEN_TICK=${GREEN}${CHECK_MARK}${NC}
+
+
 
 # Docker Image Tags
 DOCKER_HUB_REPO="infodatinc/morphus"
@@ -49,6 +55,8 @@ AIRFLOW_USER_USERNAME="airflow"
 AIRFLOW_USER_PASSWORD="airflow"
 AIRFLOW_DAG_JSON_DATA_DIR="./dag_json_data"
 UI_PORT=80
+
+
 
 ##########################################
 #              HELPER FUNCTIONS          #
@@ -92,17 +100,20 @@ DOCKER_CONTAINER_NAME_AF=$DOCKER_CONTAINER_NAME_AF
 UI_PORT=$UI_PORT
 SPRING_PROFILES_ACTIVE=default
 AIRFLOW_IMAGE_NAME=$AIRFLOW_IMG_NAME
+ENABLE_MYSQL=$ENABLE_MYSQL
 EOF
 }
 
 #Check OS version
 check_os() {
     case "$(uname -s)" in
-        Linux*) OSTYPE="linux-gnu"; echo "Linux detected";;
+        Linux*) OSTYPE="linux-gnu"; echo "Linux OS detected";;
         Darwin*) OSTYPE="darwin"; echo "macOS detected";;
         *) echo "Unsupported OS"; exit 1;;
     esac
 }
+
+
 
 #Cleanup on failure
 cleanup_on_failure() {
@@ -111,26 +122,8 @@ cleanup_on_failure() {
     exit 1
 }
 
-#To check if a port availability
-check_port() {
-    local var_name=$1
-    local description=$2
-    local port_value
-    eval "port_value=\$$var_name"
-
-    while lsof -i TCP:"$port_value" -sTCP:LISTEN >/dev/null 2>&1; do
-        echo "Port $port_value is in use for $description"
-        read -p "Enter a different port for $description: " port_value
-    done
-
-    eval "$var_name=$port_value"
-    echo "Port $port_value is available for $description"
-}
-
 # Fetch available versions from GitHub
 fetch_latest_release_info() {
-    echo "Fetching latest stable release info..."
-
     # Fetch full releases list and filter stable ones
     local release=$(curl -s "https://api.github.com/repos/$REPO/releases" \
         | jq -r 'map(select(.prerelease == false)) | sort_by(.tag_name) | last')
@@ -171,7 +164,6 @@ prompt_db_details() {
     read -rp "Database Port: " MYSQL_DB_PORT
     read -rp "Database Username: " MYSQL_DB_USER
     read -rsp "Database Password: " MYSQL_DB_PASSWORD; echo
-    read -rp "Backend Database Name: " MYSQL_DB_NAME
 }
 
 
@@ -180,7 +172,7 @@ ensure_docker_running() {
     attempt=0
     while ! sudo docker info &>/dev/null; do
         ((attempt++))
-        echo "Docker not running. Attempt $attempt to start..."
+        echo "Docker not running. Attempt $attempt to start docker..."
         if [[ "$OSTYPE" == "linux-gnu" ]]; then
             sudo systemctl start docker
         else
@@ -196,6 +188,7 @@ ensure_docker_running() {
 #                 MAIN                   #
 ##########################################
 echo ""
+echo "Installing Morphus"
 echo "Checking prerequisites..."
 echo ""
 check_os
@@ -203,8 +196,7 @@ echo ""
 
 # Check for existing installation
 if [ -d "$INSTALL_DIR" ]; then
-    echo "Morphus is already installed in $INSTALL_DIR"
-    echo "Run 'morphus update' to update or 'morphus uninstall' to remove it."
+    echo "Detected existing installation: Morphus is already installed at $INSTALL_DIR"
     exit 1
 fi
 
@@ -214,15 +206,25 @@ if ! command -v docker &>/dev/null; then
     echo "Docker is not installed. Install it from https://docs.docker.com/get-docker/ and rerun this script."
     exit 1
 fi
-echo "Docker is installed."
+
+printf "${GREEN_TICK} Docker is available\n"
 
 
 ensure_docker_running
-check_port UI_PORT "UI"
-check_port AIRFLOW_DB_PORT "Postgres database"
+echo ""
+#Check for UI port 
+read -rp "Enter port to use for UI (Default 80): " UI_PORT
+UI_PORT=${UI_PORT:-80}
+
+while lsof -i TCP:"$UI_PORT" -sTCP:LISTEN >/dev/null 2>&1; do
+    echo "Port $UI_PORT is in use"
+    read -rp "Enter a different port for UI (Default 80): " new_port
+    UI_PORT=${new_port:-80}
+done
 
 
-echo "Installing $SERVICE_NAME..."
+printf "${GREEN_TICK} Port $UI_PORT is available\n"
+
 
 # Create installation and logs directories
 mkdir -p "$INSTALL_DIR"
@@ -257,17 +259,6 @@ sudo sh -c "> \"$ENV_FILE\""
 fetch_latest_release_info
 VERSION_FILE="$APP_DIR/.ver"
 
-# echo "Available versions:"
-# for i in "${!available_versions[@]}"; do
-#     echo "$((i+1)). ${available_versions[$i]}"
-# done
-
-#while true; do
-    #read -rp "Enter the number for the Application version to apply: " version_number
-    #if [[ "$version_number" =~ ^[1-9][0-9]*$ ]] && (( version_number >= 1 && version_number <= ${#available_versions[@]} )); then
-        #version_choice="${available_versions[$((version_number-1))]}"
-        #echo "VERSION=$version_choice" | sudo tee -a "$ENV_FILE" > /dev/null
-        #echo "Selected version: $version_choice"
 
 if [ ! -f "$VERSION_FILE" ]; then
     sudo tee "$VERSION_FILE" >/dev/null <<EOF
@@ -278,49 +269,45 @@ elif ! grep -q "CURRENT_VERSION=" "$VERSION_FILE"; then
     echo "CURRENT_VERSION=$VERSION_CHOICE" | sudo tee -a "$VERSION_FILE" > /dev/null
 fi
 
-        # # Extract component versions
-        # docker_image_tag_ui=$(curl -sL "$VERSION_MAPPING_URL" | jq -r --arg v "$version_choice" '.[$v].ui')
-        # docker_image_tag_be=$(curl -sL "$VERSION_MAPPING_URL" | jq -r --arg v "$version_choice" '.[$v].backend')
-        # docker_image_tag_airflow=$(curl -sL "$VERSION_MAPPING_URL" | jq -r --arg v "$version_choice" '.[$v].airflow')
-
 DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/$REPO/main/docker-compose.yaml"
 TARGET_FILE="$APP_DIR/docker-compose.yaml"
 
-echo "Downloading the latest docker-compose.yaml..."
+echo "Downloading and setting up the required files..."
 if ! curl -fsSL "$DOCKER_COMPOSE_URL" -o "$TARGET_FILE"; then
-    echo "Failed to download docker-compose.yaml. Please check the URL or network connection."
+    echo "Failed to download required files. Please check the network connection."
     cleanup_on_failure
     exit 1
 fi
 
-
 # Collect database configuration for Airflow Setup
 
-echo "We need to set MySQL Databases for setting up backend, Please select one of the following options"
 echo "1. Create New MySQL Database"
 echo "2. Use Existing MySQL Database"
+echo "Please choose one of the option:"
 read -r db_option
 
 MAX_RETRIES=3
 for attempt in $(seq 1 $MAX_RETRIES); do
     if [[ "$db_option" == "1" ]]; then
         echo
-        check_port MYSQL_DB_PORT "MySQL database"
         echo "New databases will be created with:"
         echo "Host: $MYSQL_DB_HOSTNAME  Port: $MYSQL_DB_PORT"
-        echo "User: $MYSQL_DB_USER      Backend DB: $MYSQL_DB_NAME"
+        echo "User: $MYSQL_DB_USER"
         echo "Password can be changed later."
         echo ""
+        ENABLE_MYSQL=true
         write_env_file
         break
 
     elif [[ "$db_option" == "2" ]]; then
         echo
         prompt_db_details
-        
         echo "Attempt $attempt/$MAX_RETRIES: Checking database connection..."
-        if mysqladmin ping -h"$MYSQL_DB_HOSTNAME" -P"$MYSQL_DB_PORT" -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD"  --silent 2>/dev/null; then
+       if mysql -h"$MYSQL_DB_HOSTNAME" -P"$MYSQL_DB_PORT" -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" \
+        -e "CREATE DATABASE IF NOT EXISTS \`$MYSQL_DB_NAME\`;" 2>/dev/null; then
+
             echo "Connection successful to database host."
+            ENABLE_MYSQL=false
             write_env_file
             break
         else
@@ -369,7 +356,54 @@ BACKUP_BASE="/var/morphus_backup"
 VERSION_FILE="$APP_DIR/.ver"
 TARGET_FILE="$APP_DIR/docker-compose.yaml"
 AIRFLOW_DIR="/var/airflow"
+BASE_URL="http://${SERVICE_NAME}-back-end"
 
+
+
+
+check_service_status(){
+
+services=(
+    "${BASE_URL}-metadata:8084/metadata/actuator/health"
+    "${BASE_URL}-user-access-management:8085/actuator/health"
+    "${BASE_URL}-email-notification:8082/emailnotification/actuator/health"
+    "${BASE_URL}-auth:8081/actuator/health"
+    "${BASE_URL}-api-gateway:8083/actuator/health"
+)
+UI_CONTAINER="morphus-ui"
+
+echo "Checking backend service status..."
+
+service_max_attempts=60
+service_attempt=1
+
+while true; do
+all_up=true
+for url in "${services[@]}"; do
+response=$(docker exec "$UI_CONTAINER" curl -s "$url")
+status=$(echo "$response" | jq -r '.status' 2>/dev/null)
+
+if [[ "$status" != "UP" ]]; then
+all_up=false
+break
+fi
+done
+
+if $all_up; then
+echo "All services are UP"
+break
+fi
+
+if (( service_attempt >= service_max_attempts )); then
+echo "ERROR: Not all services became healthy in time."
+exit 1
+fi
+
+((service_attempt++))
+sleep 5
+done
+
+}
 [[ -f "$ENV_FILE" ]] || { echo "ERROR: Environment file $ENV_FILE not found"; exit 1; }
 set -a; source "$ENV_FILE"; set +a
 
@@ -392,8 +426,6 @@ sed_replace() {
 }
 
 
-
-
 case "$1" in
 
 ################################
@@ -402,7 +434,7 @@ case "$1" in
 version)
 if [ -f "$VERSION_FILE" ]; then
     CURRENT_VERSION=$(sudo awk -F'=' '/CURRENT_VERSION/{print $2}' "$VERSION_FILE")
-    echo "Current Version: ${CURRENT_VERSION:-Not Set}"
+    echo "Morphus Version: ${CURRENT_VERSION:-Not Set}"
 else
     echo "Version file not found. No version information available."
 fi
@@ -414,20 +446,35 @@ fi
 ################################
 
 start)
-echo "Starting Docker Containers..."
+echo "Starting Morphus..."
 cd "$APP_DIR" || exit 1
-#if docker compose up -d >/dev/null 2>&1; then
-if docker compose up -d; then
-    echo "Docker containers started successfully."
+
+if [ "$ENABLE_MYSQL" = true ]; then
+    docker compose --profile with-mysql up -d mysql liquibase 2>/dev/null
 else
-    echo "Failed to start Docker containers."
-    exit 1
+    docker compose up -d liquibase 2>/dev/null
 fi
 
-if [ ! -f "$ORG_MARKER" ]; then
- echo -e "\nFirst time start detected. Creating organization in the database..."
+echo " Waiting for Liquibase to finish..."
+if [ "$ENABLE_MYSQL" = true ]; then
+    docker wait morphus-liquibase
+else
+    docker compose ps -q liquibase | xargs docker wait
+fi
 
-# Wait for MySQL to be ready
+docker compose up -d \
+    api-gateway auth user-access-management metadata email-notification \
+    redis postgres \
+    airflow-init airflow-webserver airflow-scheduler airflow-worker airflow-triggerer \
+    web morphus-ui-angular
+
+
+
+
+echo "Checking if organization '$org_name' exists..."
+echo -e "\nFirst time start detected. Creating organization in the database..."
+
+if [[ "$ENABLE_MYSQL" == "true" ]]; then
 for i in {1..30}; do
 if docker exec morphus-mysql mysqladmin ping -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" --silent 2>/dev/null; then
 break
@@ -439,6 +486,8 @@ echo "MySQL did not become ready in time."
 exit 1
 fi
 done
+fi
+
 
 
 while true; do
@@ -448,31 +497,42 @@ read -rp "Confirm organization name is '$org_name'? (y/n): " confirm_org_name
 echo "Please re-enter the details."
 done
 
-# Check if organization already exists
-org_exists_query="SELECT COUNT(*) FROM morphus.organizations WHERE id='$org_name';"
-org_exists=$(docker exec morphus-mysql mysql -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -N -e "$org_exists_query" 2>/dev/null)
-if [ "$org_exists" -eq 0 ]; then
+
+if [[ "$ENABLE_MYSQL" == "true" ]]; then
+org_exists_query="SELECT COUNT(*) FROM morphus.organizations WHERE name='$org_name';"
+org_exists=$(docker exec "$MYSQL_DB_HOSTNAME" mysql -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -N -e "$org_exists_query" 2>/dev/null)
+else
+org_exists_query="SELECT COUNT(*) FROM morphus.organizations WHERE name='$org_name';"
+org_exists=$(mysql -h"$MYSQL_DB_HOSTNAME" -P"$MYSQL_DB_PORT" -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -N -e "$org_exists_query" 2>/dev/null)
+fi
+
+if [[ "$org_exists" -eq 0 ]]; then
 echo "Registering organization in the database..."
+
 register_org_query="INSERT INTO morphus.organizations (id, name, active) VALUES ('$org_name', '$org_name', b'1');"
-if docker exec morphus-mysql mysql -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -e "$register_org_query" 2>/dev/null; then
+
+if [[ "$ENABLE_MYSQL" == "true" ]]; then
+docker exec "$MYSQL_DB_HOSTNAME" mysql -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -e "$register_org_query" 2>/dev/null
+else
+mysql -h"$MYSQL_DB_HOSTNAME" -P"$MYSQL_DB_PORT" -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -e "$register_org_query" 2>/dev/null
+fi
+
+if [[ $? -eq 0 ]]; then
 echo "Organization registered successfully."
 echo "$org_name" | sudo tee "$ORG_MARKER" >/dev/null
 else
 echo "Failed to register organization '$org_name'. Please check your database connection details."
 exit 1
 fi
-else
-echo "Organization '$org_name' already exists. Skipping registration."
-fi
+
+
 else
 echo "Organization already created. Skipping organization creation."
 org_name=$(cat "$ORG_MARKER")
 fi
 
-
 if [[ ! -f "$USER_MARKER" ]]; then
-echo -e "\nTo access the UI, we need to create a new user account."
-echo "You can change the password later if needed."
+echo "Please enter the below details for the admin"
 read -rp "First Name: " first_name
 read -rp "Last Name: " last_name
 org_name_clean=$(echo "$org_name" | tr -cd '[:alnum:]' | tr '[:upper:]' '[:lower:]')
@@ -486,33 +546,51 @@ echo "Warning: Email domain ($email_domain) does not match organization name ($o
 echo "Please try again."
 fi
 done
-echo "Registering user in the database..."
+echo "Registering admin user in the database.."
 register_user_query="INSERT INTO morphus.users (id, first_name, last_name, username, email, organization_id, password, active, deleted, is_new_user, is_owner) VALUES ('demo-id-1', '$first_name', '$last_name', '$email_address', '$email_address', '$org_name', '\$2a\$12\$GTDgS7SlX1j6v8cC6q/o7uUAZqhrNb1i5wKKXDFCkTEwJTTZscoTu', b'1', b'0', b'1', b'1');"
-if docker exec morphus-mysql mysql -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -e "$register_user_query"; then
-    echo "User '$email_address' registered successfully with default password 'Welcome@123'."
-    echo "You can change the password later if needed."
+
+if [ "$ENABLE_MYSQL" = "true" ]; then
+  echo "Registering user using Docker MySQL container..."
+
+  if docker exec "${MYSQL_DB_HOSTNAME}" mysql -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -e "$register_user_query" 2>/dev/null; then
+    echo "Admin user '$email_address' registered successfully with default password 'Welcome@123'."
+    echo "You can reset the password from the UI using the 'Forgot password' option."
     echo "$email_address" | sudo tee "$USER_MARKER" >/dev/null
-    echo "User marker created."
-else
-    echo "Failed to register user '$email_address'. Please check your database connection and permissions."
+  else
+    echo " Failed to register user '$email_address' using Docker container. Check DB connection and permissions."
     exit 1
-fi
+  fi
+
 else
-echo "User already created. Skipping user creation."
+  echo "Registering user using native MySQL..."
+
+  if mysql -h"$MYSQL_DB_HOSTNAME" -P"$MYSQL_DB_PORT" -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -e "$register_user_query"2>/dev/null; then
+    echo "Admin user '$email_address' registered successfully with default password 'Welcome@123'."
+    echo "You can reset the password from the UI using the 'Forgot password' option."
+    echo "$email_address" | sudo tee "$USER_MARKER" >/dev/null
+  else
+    echo " Failed to register user '$email_address' using native MySQL. Check DB connection and permissions."
+    exit 1
+  fi
 fi
-echo "Docker containers started successfully."
+
+else
+echo "Admin User exists. Skipping user creation."
+fi
+check_service_status
+echo "Morphus started and running on port ${UI_PORT}"
 ;;
 
 ################################
 ####### Stop Containers #######
 ################################
 stop)
-echo "Stopping Docker Containers..."
+echo "Stopping Morphus..."
 cd "$APP_DIR" || exit 1
 if docker compose down >/dev/null 2>&1; then
-    echo "Docker containers stopped successfully."
+    echo "Morphus stopped successfully."
 else
-    echo "Failed to stop Docker containers."
+    echo "Failed to stop Morphus"
     exit 1
 fi
 ;;
@@ -547,9 +625,9 @@ DOCKER_IMAGE_TAG_UI=$(curl -sSL "$asset_url" | jq -r '.ui')
 DOCKER_IMAGE_TAG_BE=$(curl -sSL "$asset_url" | jq -r '.backend')
 DOCKER_IMAGE_TAG_AIRFLOW=$(curl -sSL "$asset_url" | jq -r '.airflow')
 
-# --- Check if already up-to-date ---
+# --- Check if up-to-date ---
 if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
-    echo "Morphus is already up-to-date."
+    printf "${GREEN_TICK} Morphus is up-to-date."
     exit 0
 fi
 
@@ -559,14 +637,15 @@ BACKUP_DIR="$BACKUP_BASE/$CURRENT_VERSION"
 sudo mkdir -p "$BACKUP_DIR"
 
 # Backup MySQL DB
-sudo sh -c "docker exec morphus-mysql mysqldump -u root -ppassword morphus > '$BACKUP_DIR/morphus_db.sql'" 2>/dev/null
+sudo sh -c "docker exec $MYSQL_DB_HOSTNAME mysqldump -u "MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" $MYSQL_DB_NAME > '$BACKUP_DIR/morphus_db.sql'" 2>/dev/null
 
 # --- Stop containers ---
-echo "Stopping Docker containers..."
+echo "Stopping Morphus..."
 cd "$APP_DIR" || exit 1
-docker compose down >/dev/null 2>&1 \
-    && echo "Docker containers stopped successfully." \
-    || { echo "Failed to stop Docker containers."; exit 1; }
+if ! docker compose down >/dev/null 2>&1; then
+    echo "Failed to stop Morphus."
+    exit 1
+fi
 
 # --- Backup current version ---
 BACKUP_DIR="$BACKUP_BASE/$CURRENT_VERSION"
@@ -604,33 +683,53 @@ EOL
 
 # --- Download updated docker-compose ---
 DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/$REPO/main/docker-compose.yaml"
-echo "Downloading the latest docker-compose.yaml..."
+echo "Downloading updates..."
 if ! curl -fsSL "$DOCKER_COMPOSE_URL" -o "$TARGET_FILE"; then
-    echo "Failed to download docker-compose.yaml."
+    echo "Failed to download updates. Please check the network connection."
     exit 1
 fi
 
 # --- Validate docker-compose config ---
+echo " Validating the latest update..."
 if ! output=$(docker compose -f "$APP_DIR/docker-compose.yaml" config 2>&1); then
     errors=$(echo "$output" | grep -v '^\[WARN\]' || true)
     if [[ -n "$errors" ]]; then
-        echo "Docker Compose configuration errors:"
+        echo "Morphus configuration errors:"
         echo "$errors"
         exit 1
     fi
-else
-    echo "Docker Compose config is valid."
 fi
-
 # --- Restart containers ---
-echo "Starting Docker containers..."
+echo "Starting Morphus..."
 cd "$APP_DIR" || exit 1
-if docker compose -f "$APP_DIR/docker-compose.yaml" up -d >/dev/null 2>&1; then
-    echo "Update completed successfully. Running version: $LATEST_VERSION."
+if [ "$ENABLE_MYSQL" = true ]; then
+    if docker compose --profile with-mysql up -d mysql liquibase 2>/dev/null; then
+        :
+    else
+        echo "Failed to start Morphus"
+        exit 1
+    fi
 else
-    echo "Failed to start Docker containers."
+    if docker compose up -d liquibase 2>/dev/null; then
+        echo "Liquibase started successfully"
+    else
+        echo "Failed to start Morphus"
+        exit 1
+    fi
+fi
+docker wait morphus-liquibase >/dev/null 2>&1
+if docker compose up -d \
+    api-gateway auth user-access-management metadata email-notification \
+    redis postgres \
+    airflow-init airflow-webserver airflow-scheduler airflow-worker airflow-triggerer \
+    web morphus-ui-angular >/dev/null 2>&1; then
+    echo "Update completed. Morphus $LATEST_VERSION is up and running."
+    check_service_status
+else
+    echo "Failed to start Morphus"
     exit 1
 fi
+
 ;;
 
 
@@ -672,7 +771,7 @@ echo "Rolling back to $PREVIOUS_VERSION"
 
 # Stop containers
 cd "$APP_DIR" || exit 1
-docker compose down >/dev/null 2>&1 || { echo "Failed to stop containers."; exit 1; }
+docker compose down >/dev/null 2>&1 || { echo "Failed to stop Morphus."; exit 1; }
 
 # Remove current directories
 sudo rm -rf /var/morphus /var/airflow
@@ -691,13 +790,34 @@ set -a; source "$ENV_FILE"; set +a
 
 BACKUP_DIR="$BACKUP_BASE/$CURRENT_VERSION"
 # Restart containers
-echo "Restarting containers..."
+echo "Restarting Morphus..."
 cd "$APP_DIR" || exit 1
-if docker compose -f "$APP_DIR/docker-compose.yaml" up -d >/dev/null 2>&1; then
-sudo docker exec morphus-mysql mysqldump -u root -ppassword morphus | sudo tee "$BACKUP_DIR/morphus_db.sql" > >/dev/null 2>&1
-echo "Rollback to version $PREVIOUS_VERSION completed successfully."
+if [ "$ENABLE_MYSQL" = true ]; then
+    if docker compose --profile with-mysql up -d mysql liquibase 2>/dev/null; then
+        :
+    else
+        echo "Failed to start Morphus"
+        exit 1
+    fi
 else
-echo "Rollback failed to start containers."
+    if docker compose up -d liquibase 2>/dev/null; then
+        echo "Liquibase started successfully"
+    else
+        echo "Failed to start Morphus"
+        exit 1
+    fi
+fi
+docker wait morphus-liquibase >/dev/null 2>&1
+if docker compose up -d \
+api-gateway auth user-access-management metadata email-notification \
+redis postgres \
+airflow-init airflow-webserver airflow-scheduler airflow-worker airflow-triggerer \
+web morphus-ui-angular >/dev/null 2>&1; then
+check_service_status
+sudo docker exec $MYSQL_DB_HOSTNAME mysqldump -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" $MYSQL_DB_NAME | sudo tee "$BACKUP_DIR/morphus_db.sql" >/dev/null 2>&1
+echo "Rollback completed. Morphus $PREVIOUS_VERSION is up and running"
+else
+echo "Rollback failed."
 exit 1
 fi
 ;;
@@ -708,12 +828,15 @@ fi
 
 uninstall)
 echo "Uninstalling $SERVICE_NAME..."
-echo "Stopping and Removing docker containers..."
+echo "Stopping and Removing Morphus."
 
 # Stop containers (no exit if cd fails)
 if [ -d "$APP_DIR" ]; then
     (cd "$APP_DIR" && docker compose down >/dev/null 2>&1 || true)
 fi
+
+
+
 
 docker ps -a --format "{{.Names}}" | grep '^morphus-' | xargs -r docker stop >/dev/null 2>&1
 docker ps -a --format "{{.Names}}" | grep '^morphus-' | xargs -r docker rm >/dev/null 2>&1
@@ -721,13 +844,21 @@ docker ps -a --format "{{.Names}}" | grep '^morphus-' | xargs -r docker rm >/dev
 # Remove volumes, networks, images
 docker volume rm $(docker volume ls -q | grep "^morphus") >/dev/null 2>&1
 docker network ls --format "{{.Name}}" | grep '^morphus' | xargs -r docker network rm >/dev/null 2>&1
-docker system prune -af --volumes
+docker system prune -af --volumes >/dev/null 2>&1
 docker rmi $(docker images --format "{{.Repository}}:{{.Tag}}" | grep -E '^(morphus-|mysql|redis|postgres|apache/airflow)') >/dev/null 2>&1 || true
 
 # Remove directories
 sudo chown -R $(whoami):$(whoami) "$APP_DIR" "$INSTALL_DIR" "$AIRFLOW_DIR" 2>/dev/null || true
 sudo rm -rf "$APP_DIR" "$INSTALL_DIR" "$AIRFLOW_DIR" "$BACKUP_BASE" /usr/local/bin/morphus || true
 
+if [[ "$ENABLE_MYSQL" != "true" ]]; then
+mysql -h"$MYSQL_DB_HOSTNAME" -P"$MYSQL_DB_PORT" -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" \
+    -e "DROP DATABASE IF EXISTS \`$MYSQL_DB_NAME\`;" 2>/dev/null && echo "Database dropped."
+LOCAL_MYSQL_DATA_DIR="/var/lib/mysql/$MYSQL_DB_NAME"
+if [[ -d "$LOCAL_MYSQL_DATA_DIR" ]]; then
+    sudo rm -rf "$LOCAL_MYSQL_DATA_DIR"
+fi
+fi
 echo "$SERVICE_NAME has been uninstalled."
 ;;
 
