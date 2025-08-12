@@ -18,7 +18,7 @@ GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 CHECK_MARK="\xE2\x9C\x94"
 GREEN_TICK=${GREEN}${CHECK_MARK}${NC}
-
+INSTALL_MARKER="$APP_DIR/.morphus_installed"
 
 
 # Docker Image Tags
@@ -28,7 +28,7 @@ DOCKER_CONTAINER_NAME_BE="morphus-back-end"
 DOCKER_CONTAINER_NAME_UI="morphus-ui"
 DOCKER_CONTAINER_NAME_AF="morphus-airflow"
 DOCKER_IMAGE_TAG_BE="1.0"
-DOCKER_IMAGE_TAG_UI="1.0"
+DOCKER_IMAGE_TAG_UI="1.1"
 DOCKER_IMAGE_TAG_AIRFLOW="1.0"
 AIRFLOW_IMG_NAME="apache/airflow:2.9.2"
 
@@ -114,13 +114,13 @@ check_os() {
 }
 
 
-
 #Cleanup on failure
 cleanup_on_failure() {
     echo "Installation failed. Cleaning up..."
     sudo rm -rf "$INSTALL_DIR" "$APP_DIR" "$AIRFLOW_DIR"
     exit 1
 }
+
 
 # Fetch available versions from GitHub
 fetch_latest_release_info() {
@@ -194,8 +194,9 @@ echo ""
 check_os
 echo ""
 
+
 # Check for existing installation
-if [ -d "$INSTALL_DIR" ]; then
+if [ -f "$INSTALL_MARKER" ]; then
     echo "Detected existing installation: Morphus is already installed at $INSTALL_DIR"
     exit 1
 fi
@@ -254,8 +255,7 @@ sudo chmod -R 777 "$AIRFLOW_DIR"
 sudo sh -c "> \"$ENV_FILE\""
 
 
-#Collect Version Info
-#fetch_versions
+# Collect Version Info
 fetch_latest_release_info
 VERSION_FILE="$APP_DIR/.ver"
 
@@ -358,9 +358,6 @@ TARGET_FILE="$APP_DIR/docker-compose.yaml"
 AIRFLOW_DIR="/var/airflow"
 BASE_URL="http://${SERVICE_NAME}-back-end"
 
-
-
-
 check_service_status(){
 
 services=(
@@ -462,33 +459,34 @@ else
     docker compose ps -q liquibase | xargs docker wait
 fi
 
-docker compose up -d \
+echo "Starting Morphus services..."
+if ! docker compose up -d \
     api-gateway auth user-access-management metadata email-notification \
     redis postgres \
     airflow-init airflow-webserver airflow-scheduler airflow-worker airflow-triggerer \
-    web morphus-ui-angular
+    web morphus-ui-angular; then
+    echo "Failed to start Morphus."
+    exit 1
+fi
 
 
-
-
+if [ ! -f "$ORG_MARKER" ]; then
 echo "Checking if organization '$org_name' exists..."
 echo -e "\nFirst time start detected. Creating organization in the database..."
 
 if [[ "$ENABLE_MYSQL" == "true" ]]; then
 for i in {1..30}; do
 if docker exec morphus-mysql mysqladmin ping -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" --silent 2>/dev/null; then
-break
+    break
 else
-sleep 2
+    sleep 2
 fi
 if [ "$i" -eq 30 ]; then
-echo "MySQL did not become ready in time."
-exit 1
+    echo "MySQL did not become ready in time."
+    exit 1
 fi
 done
 fi
-
-
 
 while true; do
 read -rp "Enter your organization name (domain name): " org_name
@@ -496,19 +494,15 @@ read -rp "Confirm organization name is '$org_name'? (y/n): " confirm_org_name
 [[ "$confirm_org_name" == "y" ]] && break
 echo "Please re-enter the details."
 done
-
-
-if [[ "$ENABLE_MYSQL" == "true" ]]; then
 org_exists_query="SELECT COUNT(*) FROM morphus.organizations WHERE name='$org_name';"
+if [[ "$ENABLE_MYSQL" == "true" ]]; then
 org_exists=$(docker exec "$MYSQL_DB_HOSTNAME" mysql -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -N -e "$org_exists_query" 2>/dev/null)
 else
-org_exists_query="SELECT COUNT(*) FROM morphus.organizations WHERE name='$org_name';"
 org_exists=$(mysql -h"$MYSQL_DB_HOSTNAME" -P"$MYSQL_DB_PORT" -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -N -e "$org_exists_query" 2>/dev/null)
 fi
 
 if [[ "$org_exists" -eq 0 ]]; then
 echo "Registering organization in the database..."
-
 register_org_query="INSERT INTO morphus.organizations (id, name, active) VALUES ('$org_name', '$org_name', b'1');"
 
 if [[ "$ENABLE_MYSQL" == "true" ]]; then
@@ -516,7 +510,6 @@ docker exec "$MYSQL_DB_HOSTNAME" mysql -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD"
 else
 mysql -h"$MYSQL_DB_HOSTNAME" -P"$MYSQL_DB_PORT" -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -e "$register_org_query" 2>/dev/null
 fi
-
 if [[ $? -eq 0 ]]; then
 echo "Organization registered successfully."
 echo "$org_name" | sudo tee "$ORG_MARKER" >/dev/null
@@ -524,13 +517,13 @@ else
 echo "Failed to register organization '$org_name'. Please check your database connection details."
 exit 1
 fi
-
-
+else
+echo "Organization '$org_name' already exists. Skipping registration."
+fi
 else
 echo "Organization already created. Skipping organization creation."
 org_name=$(cat "$ORG_MARKER")
 fi
-
 if [[ ! -f "$USER_MARKER" ]]; then
 echo "Please enter the below details for the admin"
 read -rp "First Name: " first_name
@@ -564,7 +557,7 @@ if [ "$ENABLE_MYSQL" = "true" ]; then
 else
   echo "Registering user using native MySQL..."
 
-  if mysql -h"$MYSQL_DB_HOSTNAME" -P"$MYSQL_DB_PORT" -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -e "$register_user_query"2>/dev/null; then
+  if mysql -h"$MYSQL_DB_HOSTNAME" -P"$MYSQL_DB_PORT" -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" -e "$register_user_query" 2>/dev/null; then
     echo "Admin user '$email_address' registered successfully with default password 'Welcome@123'."
     echo "You can reset the password from the UI using the 'Forgot password' option."
     echo "$email_address" | sudo tee "$USER_MARKER" >/dev/null
@@ -855,9 +848,7 @@ if [[ "$ENABLE_MYSQL" != "true" ]]; then
 mysql -h"$MYSQL_DB_HOSTNAME" -P"$MYSQL_DB_PORT" -u"$MYSQL_DB_USER" -p"$MYSQL_DB_PASSWORD" \
     -e "DROP DATABASE IF EXISTS \`$MYSQL_DB_NAME\`;" 2>/dev/null && echo "Database dropped."
 LOCAL_MYSQL_DATA_DIR="/var/lib/mysql/$MYSQL_DB_NAME"
-if [[ -d "$LOCAL_MYSQL_DATA_DIR" ]]; then
-    sudo rm -rf "$LOCAL_MYSQL_DATA_DIR"
-fi
+sudo rm -rf "$LOCAL_MYSQL_DATA_DIR"
 fi
 echo "$SERVICE_NAME has been uninstalled."
 ;;
@@ -892,3 +883,4 @@ Commands:
     uninstall   Stop and remove the service and associated files
 
 EOF
+touch "$INSTALL_MARKER"
