@@ -1,7 +1,7 @@
 # DataMorph
 
 
- **DataMorph** is a secure, scalable application designed to automate and manage data transfers between various sources and destinations using configurable pipelines. The `MorphusInstaller.sh`  simplifies deployment and management of Morphus Data application using Docker and Docker Compose. It offers guided setup and CLI-based lifecycle control.
+ **DataMorph** is a secure, scalable application designed to automate and manage data transfers between various sources and destinations using configurable pipelines. The `MorphusInstaller.sh`  simplifies deployment and management of DataMorph application using Docker and Docker Compose. It offers guided setup and CLI-based lifecycle control.
 
 ---
 
@@ -58,7 +58,7 @@ Linux OS:
 You will be prompted for:
 
 - Confirmation of Docker availability 
-- Port numbers (UI, Backend DB)
+- Port number (UI), Default port: 80
 - MySQL database setup (New or Existing)
     - Existing Database (Hostname, Port, Username, Password)
 - Docker Compose validation
@@ -84,9 +84,9 @@ morphus start
 During the first launch, you'll be asked to:
 
 1. Enter your organization’s domain name
-2. Confirm it 
+2. Confirm it using 'y' for yes or 'n' for no
 3. Provide your first name, last name, and company email
-4. A user account is created with default password: `Welcome@123`
+4. A user account is created with the above details and a default password: `Welcome@123`
 
 ---
 
